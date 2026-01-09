@@ -1,0 +1,261 @@
+/*******************************************************************************
+* 
+* McStas, neutron ray-tracing package
+*         Copyright (C) 1997-2008, All rights reserved
+*         Risoe National Laboratory, Roskilde, Denmark
+*         Institut Laue Langevin, Grenoble, France
+* 
+* 
+* Instrument Showcase_Monochromator_bent
+* 
+* %Identification
+* Written by: Daniel Lomholt Christensen
+* Date: 14:43 on August 20, 2024
+* Origin: NBI
+* 
+* 
+* %Parameters
+* Wavelength spread [AA]
+* DeltaBragg [arc min]
+* Mosaicity [arc min]
+* Bending_radius [m]
+* 
+* %End 
+*******************************************************************************/
+
+DEFINE INSTRUMENT Showcase_Monochromator_bent (
+double DeltaBragg = 0.0, // rocking angle of the monochromator +- Bragg angle.
+double mos = 6, // Mosaicity of the crystal
+double domain_thick=10, // The thickness of the domains used in the monochromator
+double Bending_radius = 1000, // bending radius
+double lam0 = 1.5, // Central wavelength of source
+double linDetWidth = 0.05, // Width of the PSD monitor
+string crystal = "Ge511", // Crystal and crystal plane
+double cut_angle = -19.47, // Angle between monochromator and plane of reflection
+double dhkl = 1.08888, // lattice spacing for unbent crystal
+int use_other_mono = 0, // Flag for using other McStas monochromator
+double cryst_thickness = 0.008, // Crystal thickness for comparison with Darwin equations
+double dlambda = 1,
+int write_out_kin_att = 0,
+double anisotropy =1,
+slit_width = 0.001,
+verbose = 0 // Flag for verbose output
+)
+
+DECLARE 
+%{
+    double det_angle;
+    double mono_simple_x[1];
+    double mono_simple_y[1];
+    double mono_simple_z[1];
+    double mono_simple_rot_x[1];
+    double mono_simple_rot_y[1];
+    double mono_simple_rot_z[1];
+    double mono_sandwich_x[16];
+    double mono_sandwich_y[16];
+    double mono_sandwich_z[16];
+    double mono_sandwich_rot_x[16];
+    double mono_sandwich_rot_y[16];
+    double mono_sandwich_rot_z[16];
+%}
+
+INITIALIZE 
+%{
+// Start of initialize for generated Test_Monochromator_bent
+
+
+
+// align instrument
+det_angle = 2*asin(lam0/(2*dhkl))*RAD2DEG;
+double tot_thick = 0.0116;
+for (int i=0; i<16; i++){
+    if (i==0){
+        mono_simple_x[i] = 0;
+        mono_simple_y[i] = 0;
+        mono_simple_z[i] = 0;
+        mono_simple_rot_x[i] = 0;
+        mono_simple_rot_y[i] = 0;
+        mono_simple_rot_z[i] = 0;
+    }
+    mono_sandwich_x[i] = tot_thick/2 - tot_thick*i/16 + 0.00035;
+    mono_sandwich_y[i] = 0;
+    mono_sandwich_z[i] = 0;
+    mono_sandwich_rot_x[i] = 0;
+    mono_sandwich_rot_y[i] = 0;
+    mono_sandwich_rot_z[i] = 0;
+}
+
+%}
+
+TRACE 
+
+COMPONENT Origin = Progress_bar()
+  AT (0,0,0) ABSOLUTE
+//==============================================================================
+//===============================SOURCE AND SETUP===============================
+//==============================================================================
+COMPONENT Source = Source_gen(
+ dist = 10, focus_xw = slit_width,
+ focus_yh = 0.01, lambda0 = lam0,
+ dlambda = 1e-5*lam0*dlambda, I1 = 7.95775E+12,
+ yheight = 0.01, xwidth = slit_width,
+ T1 = 315)
+AT (0,0,0) ABSOLUTE
+
+COMPONENT Slit = Slit(
+ xwidth = slit_width, yheight = 0.01)
+AT (0,0,10) RELATIVE Source
+
+COMPONENT entry_monitor = PSD_monitor(
+ nx = 200, ny = 200,
+ filename = "entry_monitor", xwidth = 0.02,
+ yheight = 0.02, restore_neutron = 1)
+AT (0,0,0.000001) RELATIVE Slit
+
+COMPONENT entry_lam_mon = L_monitor(
+    nL = 200,
+    xwidth = linDetWidth,
+    yheight = 0.02,
+    filename="entry_lam_mon",
+    Lmin = 1.498,
+    Lmax = 1.5015,
+    restore_neutron = 1
+) AT (0, 0, 0) RELATIVE PREVIOUS
+ROTATED (0, 0, 0) RELATIVE PREVIOUS
+
+COMPONENT monochromator_arm = Arm()
+AT (0,0,10.15) RELATIVE Source
+ROTATED (0, 0.5*det_angle,0) RELATIVE Source
+//==============================================================================
+//========================SINGLE NEW CRYSTAL====================================
+//==============================================================================
+
+COMPONENT Single_cryst = Monochromator_bent(
+ zwidth = 0.07, yheight = 0.012,
+ xthickness = cryst_thickness, radius_x = Bending_radius,
+ n_crystals = 1,
+ plane_of_reflection = crystal, angle_to_cut_horizontal = cut_angle,
+ mosaicity = mos,
+ mosaic_anisotropy = anisotropy, verbose = 0,
+ domainthickness = domain_thick
+//  ,x_pos = mono_simple_x,
+//  y_pos = mono_simple_y,
+//  z_pos = mono_simple_z,
+//  x_rot = mono_simple_rot_x,
+//  y_rot = mono_simple_rot_y,
+//  z_rot = mono_simple_rot_z
+ )
+ WHEN use_other_mono==0
+AT (0,0,0) RELATIVE monochromator_arm
+ROTATED (0,cut_angle + DeltaBragg,0) RELATIVE monochromator_arm
+
+//==============================================================================
+//==============================SANDWICHED NEW==================================
+//==============================================================================
+
+
+//COMPONENT Monochromator_sandwich = Monochromator_bent(
+// zwidth = 0.07, yheight = 0.012,
+// xthickness = 0.0007, radius_x = Bending_radius,
+// n_crystals = 16,
+// plane_of_reflection = crystal, angle_to_cut_horizontal = cut_angle,
+// mosaicity = mos,
+// mosaic_anisotropy = 1, verbose = 0, optimize=1,
+// x_pos = mono_sandwich_x,
+// y_pos = mono_sandwich_y,
+// z_pos = mono_sandwich_z,
+// x_rot = mono_sandwich_rot_x,
+// y_rot = mono_sandwich_rot_y,
+// z_rot = mono_sandwich_rot_z)
+// WHEN use_other_mono==1
+//AT (0,0,0) RELATIVE monochromator_arm
+//ROTATED (0,cut_angle + DeltaBragg,0) RELATIVE monochromator_arm
+
+//==============================================================================
+//=========================END OF SANDWICH MONO TEST============================
+//==============================================================================
+
+COMPONENT Ncrystal = NCrystal_sample(
+ cfg="Ge_sg227.ncmat;mos=6.0arcmin;dir1=@crys_hkl:2,1,1@lab:0,0,1;dir2=@crys_hkl:0,-1,1@lab:0,1,0;dirtol=180deg",
+ absorptionmode=1, 
+ multscat=1, 
+ xwidth=0.07, 
+ yheight=0.012, 
+ zdepth=0.008, 
+ radius=0)
+ WHEN use_other_mono==2
+AT (0,0,0) RELATIVE monochromator_arm
+ROTATED (0,cut_angle + DeltaBragg+90,0) RELATIVE monochromator_arm
+ 
+//==============================================================================
+//===========================END OF MONOCHROMATORS==============================
+//==============================================================================
+COMPONENT arm_after_monochromator = Arm()
+AT (0,0,0) RELATIVE monochromator_arm
+ROTATED (0,0.5*det_angle,0) RELATIVE monochromator_arm
+
+COMPONENT monitor_arm = Arm()
+AT (0,0,0) RELATIVE arm_after_monochromator
+ROTATED (0,0,0) RELATIVE arm_after_monochromator
+
+COMPONENT x_monitor = PSD_monitor(
+    nx = 200, ny=1, filename = "det1d.dat", xwidth = linDetWidth,
+    yheight = 0.02, restore_neutron = 1)
+AT (0, 0, 0.051) RELATIVE monitor_arm
+
+COMPONENT lam_mon = L_monitor(
+    nL = 200,
+    xwidth = linDetWidth,
+    yheight = 0.02,
+    Lmin = 1.498,
+    Lmax = 1.5015,
+    restore_neutron = 1
+) AT (0, 0, 0) RELATIVE PREVIOUS
+ROTATED (0, 0, 0) RELATIVE PREVIOUS
+
+COMPONENT lam_narrow = Monitor_nD(
+    xwidth = linDetWidth,
+    yheight = 0.02,
+    restore_neutron = 1,
+    options = "x limits=[-0.002,0.002] bins=200 lambda limits=[1.49998, 1.50002] bins=200 ",
+    filename = "NDmon_small"
+) AT (0, 0, 0) RELATIVE PREVIOUS
+ROTATED (0, 0, 0) RELATIVE PREVIOUS
+
+COMPONENT lam_broad = Monitor_nD(
+    xwidth = 0.03,
+    yheight = 0.02,
+    restore_neutron = 1,
+    // options = "lambda limits=[1.49998,1.50002] bins=200 x limits=[-0.002,0.002] bins=200",
+    options = "x bins=500 lambda limits=[1.495, 1.505] bins=500",
+    filename = "NDmon"
+) AT (0, 0, 0) RELATIVE PREVIOUS
+ROTATED (0, 0, 0) RELATIVE PREVIOUS
+
+COMPONENT div_x = Monitor_nD(
+    xwidth = linDetWidth,
+    yheight = 0.02,
+    restore_neutron = 1,
+    // options = "lambda limits=[1.49998,1.50002] bins=200 x limits=[-0.002,0.002] bins=200",
+    options = "x limits=[-0.002,0.002] bins=500 hdiv limits=[-0.01, 0.01] bins=500",
+    filename = "div_mon_small"
+) AT (0, 0, 0) RELATIVE PREVIOUS
+ROTATED (0, 0, 0) RELATIVE PREVIOUS
+COMPONENT div_x_broad = Monitor_nD(
+    xwidth = 0.03,
+    yheight = 0.02,
+    restore_neutron = 1,
+    // options = "lambda limits=[1.49998,1.50002] bins=200 x limits=[-0.002,0.002] bins=200",
+    options = "x bins=500 hdiv limits=[-1, 1] bins=500",
+    filename = "div_mon_large"
+) AT (0, 0, 0) RELATIVE PREVIOUS
+ROTATED (0, 0, 0) RELATIVE PREVIOUS
+
+
+
+FINALLY 
+%{
+// Start of finally for generated Test_Monochromator_bent
+%}
+
+END
